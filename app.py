@@ -7,7 +7,7 @@ from sklearn.metrics import accuracy_score
 from groq import Groq
 
 # --------------------------------------------------
-# PAGE SETUP
+# PAGE CONFIG
 # --------------------------------------------------
 st.set_page_config(
     page_title="AI-Based NIDS",
@@ -16,12 +16,13 @@ st.set_page_config(
 
 st.title("AI-Based Network Intrusion Detection System")
 st.markdown("""
-**Student Project**  
-Random Forest–based Network Intrusion Detection with **Groq AI explanations**
+**Final Year Student Project**  
+Random Forest–based Network Intrusion Detection  
+with **Groq AI–powered explanations**
 """)
 
 # --------------------------------------------------
-# CONFIG
+# DATASET CONFIG (RAW GITHUB URL)
 # --------------------------------------------------
 DATA_FILE = (
     "https://raw.githubusercontent.com/"
@@ -32,30 +33,37 @@ DATA_FILE = (
 # --------------------------------------------------
 # SIDEBAR
 # --------------------------------------------------
-st.sidebar.header("1. Settings")
+st.sidebar.header("1. API Configuration")
 groq_api_key = st.sidebar.text_input(
     "Groq API Key",
     type="password",
     help="Starts with gsk_"
 )
 
-st.sidebar.header("2. Model Training")
+st.sidebar.header("2. Model Control")
 
 # --------------------------------------------------
-# DATA LOADING
+# DATA LOADING (GITHUB + CIC-IDS SAFE)
 # --------------------------------------------------
 @st.cache_data
 def load_data(filepath):
     try:
         df = pd.read_csv(
             filepath,
-            nrows=15000,
-            encoding="latin1"
+            sep=",",
+            engine="python",        # Handles malformed CIC-IDS rows
+            encoding="latin1",
+            on_bad_lines="skip",    # Skip corrupted rows
+            low_memory=False,
+            nrows=15000             # Keeps Streamlit stable
         )
+
         df.columns = df.columns.str.strip()
         df.replace([np.inf, -np.inf], np.nan, inplace=True)
         df.dropna(inplace=True)
+
         return df
+
     except Exception as e:
         st.error(f"Dataset loading failed: {e}")
         return None
@@ -65,34 +73,39 @@ def load_data(filepath):
 # --------------------------------------------------
 def train_model(df):
     features = [
-        'Flow Duration',
-        'Total Fwd Packets',
-        'Total Backward Packets',
-        'Total Length of Fwd Packets',
-        'Fwd Packet Length Max',
-        'Flow IAT Mean'
+        "Flow Duration",
+        "Total Fwd Packets",
+        "Total Backward Packets",
+        "Total Length of Fwd Packets",
+        "Fwd Packet Length Max",
+        "Flow IAT Mean"
     ]
 
-    target = 'Label'
+    target = "Label"
     df[target] = df[target].astype(str)
 
     X = df[features]
     y = df[target]
 
     X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.3, random_state=42, stratify=y
+        X,
+        y,
+        test_size=0.3,
+        random_state=42,
+        stratify=y
     )
 
     model = RandomForestClassifier(
         n_estimators=50,
         max_depth=12,
-        class_weight="balanced",
+        class_weight="balanced",   # Handles class imbalance
         random_state=42
     )
 
     model.fit(X_train, y_train)
 
     accuracy = accuracy_score(y_test, model.predict(X_test))
+
     return model, accuracy, features, X_test, y_test
 
 # --------------------------------------------------
@@ -106,18 +119,18 @@ if df is None:
 st.sidebar.success(f"Dataset Loaded: {len(df)} rows")
 
 # --------------------------------------------------
-# TRAIN BUTTON
+# TRAIN MODEL
 # --------------------------------------------------
-if st.sidebar.button("Train Model Now"):
+if st.sidebar.button("Train Model"):
     with st.spinner("Training Random Forest model..."):
         model, acc, features, X_test, y_test = train_model(df)
-        st.session_state.update({
-            "model": model,
-            "features": features,
-            "X_test": X_test,
-            "y_test": y_test
-        })
-        st.sidebar.success(f"Training Complete — Accuracy: {acc:.2%}")
+
+        st.session_state["model"] = model
+        st.session_state["features"] = features
+        st.session_state["X_test"] = X_test
+        st.session_state["y_test"] = y_test
+
+        st.sidebar.success(f"Model Trained — Accuracy: {acc:.2%}")
 
 # --------------------------------------------------
 # DASHBOARD
@@ -127,21 +140,25 @@ st.header("3. Threat Analysis Dashboard")
 if "model" in st.session_state:
     col1, col2 = st.columns(2)
 
-    # ---- Packet Selection ----
+    # ------------------------------
+    # Traffic Simulation
+    # ------------------------------
     with col1:
         st.subheader("Traffic Simulation")
-        if st.button("🎲 Capture Random Packet"):
+        if st.button("🎲 Capture Random Network Flow"):
             idx = np.random.randint(len(st.session_state["X_test"]))
             st.session_state["packet"] = st.session_state["X_test"].iloc[idx]
             st.session_state["true_label"] = st.session_state["y_test"].iloc[idx]
 
-    # ---- Packet Analysis ----
+    # ------------------------------
+    # Analysis Section
+    # ------------------------------
     if "packet" in st.session_state:
         packet = st.session_state["packet"]
 
         with col1:
-            st.subheader("Packet Features")
-            st.dataframe(packet.to_frame("Value"))
+            st.subheader("Captured Flow Features")
+            st.dataframe(packet.to_frame("Value"), use_container_width=True)
 
         with col2:
             st.subheader("Detection Result")
@@ -154,16 +171,16 @@ if "model" in st.session_state:
             prediction = st.session_state["model"].predict(packet_df)[0]
 
             if prediction == "BENIGN":
-                st.success("STATUS: SAFE (BENIGN)")
+                st.success("STATUS: SAFE (BENIGN TRAFFIC)")
             else:
                 st.error(f"STATUS: ATTACK DETECTED ({prediction})")
 
-            st.caption(f"Ground Truth: {st.session_state['true_label']}")
+            st.caption(f"Ground Truth Label: {st.session_state['true_label']}")
 
             st.markdown("---")
-            st.subheader("Ask AI Analyst (Groq)")
+            st.subheader("Ask AI Security Analyst (Groq)")
 
-            if st.button("Generate Explanation"):
+            if st.button("Generate AI Explanation"):
                 if not groq_api_key:
                     st.warning("Please enter your Groq API key in the sidebar.")
                 else:
@@ -174,15 +191,16 @@ You are a cybersecurity analyst.
 
 Prediction: {prediction}
 
-Packet feature values:
+Network flow feature values:
 {packet.to_string()}
 
-Explain briefly and simply for a student:
-1. Why this packet looks {prediction}
-2. What these values indicate in network traffic
+Explain clearly for a student:
+1. Why this traffic was classified as {prediction}
+2. What these feature values indicate
+3. Whether this flow looks normal or suspicious
 """
 
-                    with st.spinner("Groq AI is analyzing..."):
+                    with st.spinner("Groq AI is analyzing traffic..."):
                         response = client.chat.completions.create(
                             model="llama3-70b-8192",
                             messages=[
@@ -194,5 +212,4 @@ Explain briefly and simply for a student:
                         st.info(response.choices[0].message.content)
 
 else:
-    st.info("Click **Train Model Now** to start analysis.")
-
+    st.info("Click **Train Model** from the sidebar to begin detection.")
