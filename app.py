@@ -5,6 +5,7 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, classification_report
 from groq import Groq
+import csv
 
 # --------------------------------------------------
 # PAGE CONFIG
@@ -39,11 +40,17 @@ st.sidebar.caption("https://console.groq.com/keys")
 st.sidebar.header("2. Model Training")
 
 # --------------------------------------------------
-# DATA LOADING (CLOUD-SAFE)
+# DATA LOADING (CLOUD-SAFE & ROBUST)
 # --------------------------------------------------
 @st.cache_data
 def load_data(filepath):
-    import csv
+    """
+    Robust CSV loader:
+    - Handles latin1 encoding
+    - Skips malformed rows
+    - Detects label column automatically
+    - Returns cleaned DataFrame
+    """
     rows = []
     columns = None
     max_rows = 15000
@@ -55,7 +62,6 @@ def load_data(filepath):
                 if i == 0:
                     columns = [c.strip() for c in row]
                 else:
-                    # Skip rows with wrong number of columns
                     if len(row) != len(columns):
                         continue
                     rows.append(row)
@@ -64,18 +70,20 @@ def load_data(filepath):
 
         df = pd.DataFrame(rows, columns=columns)
 
-        # Convert numeric columns
+        # Convert numeric columns safely
         for col in df.columns:
             df[col] = pd.to_numeric(df[col], errors="ignore")
 
         # Replace infinities
         df.replace([np.inf, -np.inf], np.nan, inplace=True)
-
-        # Drop NaNs
         df.dropna(inplace=True)
 
-        # Ensure label column is string
-        df["Label"] = df["Label"].astype(str)
+        # Auto-detect label column
+        label_candidates = [c for c in df.columns if 'label' in c.lower()]
+        if not label_candidates:
+            st.error("No label column found in CSV!")
+            return None
+        df[label_candidates[0]] = df[label_candidates[0]].astype(str)
 
         return df
 
@@ -87,12 +95,18 @@ def load_data(filepath):
         st.error(f"Dataset loading failed: {e}")
         return None
 
-
-
 # --------------------------------------------------
 # MODEL TRAINING
 # --------------------------------------------------
 def train_model(df):
+    # Auto-detect label column
+    label_candidates = [c for c in df.columns if 'label' in c.lower()]
+    if not label_candidates:
+        st.error("No label column found!")
+        return None, 0, None, None, None
+    target = label_candidates[0]
+    df[target] = df[target].astype(str)
+
     features = [
         "Flow Duration",
         "Total Fwd Packets",
@@ -103,8 +117,6 @@ def train_model(df):
         "Flow IAT Std",
         "Flow Packets/s"
     ]
-
-    target = "Label"
 
     missing = [f for f in features if f not in df.columns]
     if missing:
@@ -127,7 +139,6 @@ def train_model(df):
 
     clf.fit(X_train, y_train)
     preds = clf.predict(X_test)
-
     acc = accuracy_score(y_test, preds)
 
     return clf, acc, features, X_test, y_test
@@ -236,7 +247,7 @@ Explain briefly:
                     st.error(f"Groq API Error: {e}")
 
 # --------------------------------------------------
-# EVALUATION
+# MODEL EVALUATION
 # --------------------------------------------------
 with st.expander("Model Evaluation Report"):
     preds = st.session_state.model.predict(st.session_state.X_test)
