@@ -43,7 +43,7 @@ groq_api_key = st.sidebar.text_input(
 st.sidebar.header("2. Model Control")
 
 # --------------------------------------------------
-# DATA LOADING (GITHUB + CIC-IDS SAFE)
+# DATA LOADING (FINAL FIXED VERSION)
 # --------------------------------------------------
 @st.cache_data
 def load_data(filepath):
@@ -51,11 +51,10 @@ def load_data(filepath):
         df = pd.read_csv(
             filepath,
             sep=",",
-            engine="python",        # Handles malformed CIC-IDS rows
+            engine="python",        # Required for CIC-IDS
             encoding="latin1",
-            on_bad_lines="skip",    # Skip corrupted rows
-            low_memory=False,
-            nrows=15000             # Keeps Streamlit stable
+            on_bad_lines="skip",    # Skip malformed rows
+            nrows=15000             # Memory safe
         )
 
         df.columns = df.columns.str.strip()
@@ -98,7 +97,7 @@ def train_model(df):
     model = RandomForestClassifier(
         n_estimators=50,
         max_depth=12,
-        class_weight="balanced",   # Handles class imbalance
+        class_weight="balanced",
         random_state=42
     )
 
@@ -213,3 +212,4 @@ Explain clearly for a student:
 
 else:
     st.info("Click **Train Model** from the sidebar to begin detection.")
+sidebar to begin detection.")
