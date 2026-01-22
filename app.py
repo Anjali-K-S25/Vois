@@ -23,7 +23,11 @@ Random Forest–based Network Intrusion Detection with **Groq AI explanations**
 # --------------------------------------------------
 # CONFIG
 # --------------------------------------------------
-DATA_FILE = "https://github.com/Anjali-K-S25/Vois/blob/main/Friday-WorkingHours-Afternoon-DDos.pcap_ISCX.csv"
+DATA_FILE = (
+    "https://raw.githubusercontent.com/"
+    "Anjali-K-S25/Vois/main/"
+    "Friday-WorkingHours-Afternoon-DDos.pcap_ISCX.csv"
+)
 
 # --------------------------------------------------
 # SIDEBAR
@@ -38,7 +42,7 @@ groq_api_key = st.sidebar.text_input(
 st.sidebar.header("2. Model Training")
 
 # --------------------------------------------------
-# DATA LOADING (FIXED FOR STREAMLIT CLOUD)
+# DATA LOADING
 # --------------------------------------------------
 @st.cache_data
 def load_data(filepath):
@@ -46,8 +50,7 @@ def load_data(filepath):
         df = pd.read_csv(
             filepath,
             nrows=15000,
-            compression="infer",   # 🔑 Handles .gz automatically
-            encoding="latin1"      # 🔑 CIC-IDS safe encoding
+            encoding="latin1"
         )
         df.columns = df.columns.str.strip()
         df.replace([np.inf, -np.inf], np.nan, inplace=True)
@@ -61,7 +64,6 @@ def load_data(filepath):
 # MODEL TRAINING
 # --------------------------------------------------
 def train_model(df):
-    # SAFE feature set (exists in CIC-IDS)
     features = [
         'Flow Duration',
         'Total Fwd Packets',
@@ -78,14 +80,16 @@ def train_model(df):
     y = df[target]
 
     X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.3, random_state=42
+        X, y, test_size=0.3, random_state=42, stratify=y
     )
 
     model = RandomForestClassifier(
         n_estimators=50,
         max_depth=12,
+        class_weight="balanced",
         random_state=42
     )
+
     model.fit(X_train, y_train)
 
     accuracy = accuracy_score(y_test, model.predict(X_test))
@@ -137,14 +141,17 @@ if "model" in st.session_state:
 
         with col1:
             st.subheader("Packet Features")
-            st.dataframe(packet, use_container_width=True)
+            st.dataframe(packet.to_frame("Value"))
 
         with col2:
             st.subheader("Detection Result")
 
-            prediction = st.session_state["model"].predict(
-                packet.values.reshape(1, -1)
-            )[0]
+            packet_df = pd.DataFrame(
+                [packet],
+                columns=st.session_state["features"]
+            )
+
+            prediction = st.session_state["model"].predict(packet_df)[0]
 
             if prediction == "BENIGN":
                 st.success("STATUS: SAFE (BENIGN)")
@@ -172,13 +179,15 @@ Packet feature values:
 
 Explain briefly and simply for a student:
 1. Why this packet looks {prediction}
-2. What these values indicate
+2. What these values indicate in network traffic
 """
 
                     with st.spinner("Groq AI is analyzing..."):
                         response = client.chat.completions.create(
-                            model="llama-3.3-70b-versatile",
-                            messages=[{"role": "user", "content": prompt}],
+                            model="llama3-70b-8192",
+                            messages=[
+                                {"role": "user", "content": prompt}
+                            ],
                             temperature=0.5
                         )
 
@@ -186,3 +195,4 @@ Explain briefly and simply for a student:
 
 else:
     st.info("Click **Train Model Now** to start analysis.")
+
