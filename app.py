@@ -47,9 +47,10 @@ def load_data(filepath):
         df = pd.read_csv(
             filepath,
             nrows=15000,
-            encoding="latin1",     # critical
-            engine="python",       # critical
-            errors="replace"       # critical
+            encoding="latin1",
+            engine="python",
+            on_bad_lines="skip",   # <-- SAFE replacement
+            low_memory=False
         )
 
         df.columns = df.columns.str.strip()
