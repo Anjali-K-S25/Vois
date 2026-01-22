@@ -23,7 +23,7 @@ Random Forest–based Network Intrusion Detection with **Groq AI explanations**
 # --------------------------------------------------
 # CONFIG
 # --------------------------------------------------
-DATA_FILE = "Friday-WorkingHours-Afternoon-DDos.pcap_ISCX.csv"
+DATA_FILE = "https://github.com/Anjali-K-S25/Vois/blob/main/Friday-WorkingHours-Afternoon-DDos.pcap_ISCX.csv"
 
 # --------------------------------------------------
 # SIDEBAR
