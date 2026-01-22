@@ -5,211 +5,148 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score
 from groq import Groq
+import os
 
-# --------------------------------------------------
-# PAGE CONFIG
-# --------------------------------------------------
-st.set_page_config(
-    page_title="AI-Based NIDS",
-    layout="wide"
-)
+# --- PAGE SETUP ---
+st.set_page_config(page_title="AI-NIDS Student Project", layout="wide")
 
 st.title("AI-Based Network Intrusion Detection System")
 st.markdown("""
-**Final Year Student Project**  
-Random Forest–based Network Intrusion Detection  
-with **Groq AI–powered explanations**
+**Student Project**: This system uses **Random Forest** to detect Network attacks and **Groq AI** to explain the packets.
 """)
 
-# --------------------------------------------------
-# DATASET CONFIG (RAW GITHUB URL)
-# --------------------------------------------------
-DATA_FILE = (
-    "https://raw.githubusercontent.com/"
-    "Anjali-K-S25/Vois/main/"
-    "Friday-WorkingHours-Afternoon-DDos.pcap_ISCX.csv"
-)
+# --- CONFIGURATION ---
+DATA_FILE = "Friday-WorkingHours-Afternoon-DDos.pcap_ISCX.csv"
 
-# --------------------------------------------------
-# SIDEBAR
-# --------------------------------------------------
-st.sidebar.header("1. API Configuration")
-groq_api_key = st.sidebar.text_input(
-    "Groq API Key",
-    type="password",
-    help="Starts with gsk_"
-)
+# --- SIDEBAR: SETTINGS ---
+st.sidebar.header("1. Settings")
+groq_api_key = st.sidebar.text_input("Groq API Key (starts with gsk_)", type="password")
+st.sidebar.caption("[Get a free key here](https://console.groq.com/keys)")
 
-st.sidebar.header("2. Model Control")
+st.sidebar.header("2. Model Training")
 
-# --------------------------------------------------
-# DATA LOADING (FINAL FIXED VERSION)
-# --------------------------------------------------
 @st.cache_data
 def load_data(filepath):
     try:
-        df = pd.read_csv(
-            filepath,
-            sep=",",
-            engine="python",        # Required for CIC-IDS
-            encoding="latin1",
-            on_bad_lines="skip",    # Skip malformed rows
-            nrows=15000             # Memory safe
-        )
-
+        df = pd.read_csv(filepath, nrows=15000)
         df.columns = df.columns.str.strip()
         df.replace([np.inf, -np.inf], np.nan, inplace=True)
         df.dropna(inplace=True)
-
         return df
-
-    except Exception as e:
-        st.error(f"Dataset loading failed: {e}")
+    except FileNotFoundError:
         return None
 
-# --------------------------------------------------
-# MODEL TRAINING
-# --------------------------------------------------
 def train_model(df):
-    features = [
-        "Flow Duration",
-        "Total Fwd Packets",
-        "Total Backward Packets",
-        "Total Length of Fwd Packets",
-        "Fwd Packet Length Max",
-        "Flow IAT Mean"
-    ]
-
-    target = "Label"
-    df[target] = df[target].astype(str)
+    features = ['Flow Duration', 'Total Fwd Packets', 'Total Backward Packets', 
+                'Total Length of Fwd Packets', 'Fwd Packet Length Max', 
+                'Flow IAT Mean', 'Flow IAT Std', 'Flow Packets/s']
+    target = 'Label'
+    
+    missing_cols = [c for c in features if c not in df.columns]
+    if missing_cols:
+        st.error(f"Missing columns in CSV: {missing_cols}")
+        return None, 0, [], None, None
 
     X = df[features]
     y = df[target]
+    
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)
+    
+    clf = RandomForestClassifier(n_estimators=10, max_depth=10, random_state=42)
+    clf.fit(X_train, y_train)
+    
+    score = accuracy_score(y_test, clf.predict(X_test))
+    return clf, score, features, X_test, y_test
 
-    X_train, X_test, y_train, y_test = train_test_split(
-        X,
-        y,
-        test_size=0.3,
-        random_state=42,
-        stratify=y
-    )
-
-    model = RandomForestClassifier(
-        n_estimators=50,
-        max_depth=12,
-        class_weight="balanced",
-        random_state=42
-    )
-
-    model.fit(X_train, y_train)
-
-    accuracy = accuracy_score(y_test, model.predict(X_test))
-
-    return model, accuracy, features, X_test, y_test
-
-# --------------------------------------------------
-# LOAD DATA
-# --------------------------------------------------
+# --- APP LOGIC ---
 df = load_data(DATA_FILE)
 
 if df is None:
+    st.error(f"Error: File '{DATA_FILE}' not found. Please upload it to the Files tab.")
     st.stop()
 
 st.sidebar.success(f"Dataset Loaded: {len(df)} rows")
 
-# --------------------------------------------------
-# TRAIN MODEL
-# --------------------------------------------------
-if st.sidebar.button("Train Model"):
-    with st.spinner("Training Random Forest model..."):
-        model, acc, features, X_test, y_test = train_model(df)
+if st.sidebar.button("Train Model Now"):
+    with st.spinner("Training model..."):
+        clf, accuracy, feature_names, X_test, y_test = train_model(df)
+        if clf:
+            st.session_state['model'] = clf
+            st.session_state['features'] = feature_names
+            st.session_state['X_test'] = X_test 
+            st.session_state['y_test'] = y_test
+            st.sidebar.success(f"Training Complete! Accuracy: {accuracy:.2%}")
 
-        st.session_state["model"] = model
-        st.session_state["features"] = features
-        st.session_state["X_test"] = X_test
-        st.session_state["y_test"] = y_test
-
-        st.sidebar.success(f"Model Trained — Accuracy: {acc:.2%}")
-
-# --------------------------------------------------
-# DASHBOARD
-# --------------------------------------------------
 st.header("3. Threat Analysis Dashboard")
 
-if "model" in st.session_state:
+if 'model' in st.session_state:
     col1, col2 = st.columns(2)
-
-    # ------------------------------
-    # Traffic Simulation
-    # ------------------------------
+    
     with col1:
-        st.subheader("Traffic Simulation")
-        if st.button("🎲 Capture Random Network Flow"):
-            idx = np.random.randint(len(st.session_state["X_test"]))
-            st.session_state["packet"] = st.session_state["X_test"].iloc[idx]
-            st.session_state["true_label"] = st.session_state["y_test"].iloc[idx]
-
-    # ------------------------------
-    # Analysis Section
-    # ------------------------------
-    if "packet" in st.session_state:
-        packet = st.session_state["packet"]
-
+        st.subheader("Simulation")
+        st.info("Pick a random packet from the test data to simulate live traffic.")
+        
+        if st.button("ðŸŽ² Capture Random Packet"):
+            random_idx = np.random.randint(0, len(st.session_state['X_test']))
+            packet_data = st.session_state['X_test'].iloc[random_idx]
+            actual_label = st.session_state['y_test'].iloc[random_idx]
+            
+            st.session_state['current_packet'] = packet_data
+            st.session_state['actual_label'] = actual_label
+            
+    if 'current_packet' in st.session_state:
+        packet = st.session_state['current_packet']
+        
         with col1:
-            st.subheader("Captured Flow Features")
-            st.dataframe(packet.to_frame("Value"), use_container_width=True)
+            st.write("**Packet Header Info:**")
+            st.dataframe(packet, use_container_width=True)
 
         with col2:
-            st.subheader("Detection Result")
-
-            packet_df = pd.DataFrame(
-                [packet],
-                columns=st.session_state["features"]
-            )
-
-            prediction = st.session_state["model"].predict(packet_df)[0]
-
+            st.subheader("AI Detection Result")
+            prediction = st.session_state['model'].predict([packet])[0]
+            
             if prediction == "BENIGN":
-                st.success("STATUS: SAFE (BENIGN TRAFFIC)")
+                st.success(f" STATUS: **SAFE (BENIGN)**")
             else:
-                st.error(f"STATUS: ATTACK DETECTED ({prediction})")
-
-            st.caption(f"Ground Truth Label: {st.session_state['true_label']}")
+                st.error(f"ðŸš¨ STATUS: **ATTACK DETECTED ({prediction})**")
+            
+            st.caption(f"Ground Truth Label: {st.session_state['actual_label']}")
 
             st.markdown("---")
-            st.subheader("Ask AI Security Analyst (Groq)")
-
-            if st.button("Generate AI Explanation"):
+            st.subheader(" Ask AI Analyst (Groq)")
+            
+            if st.button("Generate Explanation"):
                 if not groq_api_key:
-                    st.warning("Please enter your Groq API key in the sidebar.")
+                    st.warning(" Please enter your Groq API Key in the sidebar first.")
                 else:
-                    client = Groq(api_key=groq_api_key)
+                    try:
+                        client = Groq(api_key=groq_api_key)
+                        
+                        prompt = f"""
+                        You are a cybersecurity analyst. 
+                        A network packet was detected as: {prediction}.
+                        
+                        Packet Technical Details:
+                        {packet.to_string()}
+                        
+                        Please explain:
+                        1. Why these specific values (like Flow Duration or Packet Length) might indicate {prediction}.
+                        2. If it is BENIGN, explain why it looks normal.
+                        3. Keep the answer short and simple for a student.
+                        """
 
-                    prompt = f"""
-You are a cybersecurity analyst.
-
-Prediction: {prediction}
-
-Network flow feature values:
-{packet.to_string()}
-
-Explain clearly for a student:
-1. Why this traffic was classified as {prediction}
-2. What these feature values indicate
-3. Whether this flow looks normal or suspicious
-"""
-
-                    with st.spinner("Groq AI is analyzing traffic..."):
-                        response = client.chat.completions.create(
-                            model="llama3-70b-8192",
-                            messages=[
-                                {"role": "user", "content": prompt}
-                            ],
-                            temperature=0.5
-                        )
-
-                        st.info(response.choices[0].message.content)
-
+                        with st.spinner("Groq is analyzing the packet..."):
+                            completion = client.chat.completions.create(
+                                model="llama-3.3-70b-versatile",  # <--- UPDATED MODEL NAME
+                                messages=[
+                                    {"role": "user", "content": prompt}
+                                ],
+                                temperature=0.6,
+                            )
+                            st.info(completion.choices[0].message.content)
+                            
+                    except Exception as e:
+                        st.error(f"API Error: {e}")
 else:
-    st.info("Click **Train Model** from the sidebar to begin detection.")
+    st.info(" Waiting for model training. Click **'Train Model Now'** in the sidebar.")
 
