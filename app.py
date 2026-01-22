@@ -43,17 +43,30 @@ st.sidebar.header("2. Model Training")
 # --------------------------------------------------
 @st.cache_data
 def load_data(filepath):
-    try:
-        df = pd.read_csv(
-            filepath,
-            nrows=15000,
-            encoding="latin1",
-            engine="python",
-            on_bad_lines="skip"   # skip bad rows safely
-        )
+    import csv
+    rows = []
+    columns = None
+    max_rows = 15000
 
-        # Clean columns
-        df.columns = df.columns.str.strip()
+    try:
+        with open(filepath, "r", encoding="latin1") as f:
+            reader = csv.reader(f)
+            for i, row in enumerate(reader):
+                if i == 0:
+                    columns = [c.strip() for c in row]
+                else:
+                    # Skip rows with wrong number of columns
+                    if len(row) != len(columns):
+                        continue
+                    rows.append(row)
+                if i >= max_rows:
+                    break
+
+        df = pd.DataFrame(rows, columns=columns)
+
+        # Convert numeric columns
+        for col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors="ignore")
 
         # Replace infinities
         df.replace([np.inf, -np.inf], np.nan, inplace=True)
@@ -61,7 +74,7 @@ def load_data(filepath):
         # Drop NaNs
         df.dropna(inplace=True)
 
-        # Ensure label is string
+        # Ensure label column is string
         df["Label"] = df["Label"].astype(str)
 
         return df
@@ -73,6 +86,7 @@ def load_data(filepath):
     except Exception as e:
         st.error(f"Dataset loading failed: {e}")
         return None
+
 
 
 # --------------------------------------------------
