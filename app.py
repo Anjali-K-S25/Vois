@@ -23,7 +23,6 @@ DATA_FILE = "Friday-WorkingHours-Afternoon-DDos.pcap_ISCX.zip"
 # -------------------------
 # SIDEBAR
 # -------------------------
-st.sidebar.header("Settings")
 groq_api_key = st.sidebar.text_input("Groq API Key (starts with gsk_)", type="password")
 st.sidebar.caption("https://console.groq.com/keys")
 st.sidebar.header("Model Training")
