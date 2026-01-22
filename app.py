@@ -49,20 +49,31 @@ def load_data(filepath):
             nrows=15000,
             encoding="latin1",
             engine="python",
-            on_bad_lines="skip",   # <-- SAFE replacement
-            low_memory=False
+            on_bad_lines="skip"   # skip bad rows safely
         )
 
+        # Clean columns
         df.columns = df.columns.str.strip()
+
+        # Replace infinities
         df.replace([np.inf, -np.inf], np.nan, inplace=True)
+
+        # Drop NaNs
         df.dropna(inplace=True)
+
+        # Ensure label is string
         df["Label"] = df["Label"].astype(str)
 
         return df
 
+    except FileNotFoundError:
+        st.error(f"File '{filepath}' not found.")
+        return None
+
     except Exception as e:
         st.error(f"Dataset loading failed: {e}")
         return None
+
 
 # --------------------------------------------------
 # MODEL TRAINING
