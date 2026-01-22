@@ -212,4 +212,4 @@ Explain clearly for a student:
 
 else:
     st.info("Click **Train Model** from the sidebar to begin detection.")
-sidebar to begin detection.")
+
