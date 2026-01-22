@@ -18,7 +18,7 @@ This system uses **Random Forest** to detect network attacks
 and **Groq AI** to explain packet behavior.
 """)
 
-DATA_FILE = "Friday-WorkingHours-Afternoon-DDos.pcap_ISCX.csv"
+DATA_FILE = "Friday-WorkingHours-Afternoon-DDos.pcap_ISCX.zip"
 
 # -------------------------
 # SIDEBAR
